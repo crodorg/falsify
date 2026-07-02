@@ -6,11 +6,14 @@
 //! trust, so that stays the LLM auditor's job. Output is SUGGESTIONS the auditor
 //! confirms, never an autonomous finding.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
+use anyhow::Result;
 use regex::Regex;
 
 use crate::model::*;
+use crate::store;
 
 /// A suggested mechanical contradiction between two pins (by index into the slice).
 pub struct Suggestion {
@@ -66,6 +69,31 @@ pub fn suggest(pins: &[Pin]) -> Vec<Suggestion> {
         }
     }
     out
+}
+
+/// Group each author's map-fragment pins and format the mechanical numeric-conflict suggestions as
+/// lines the auditor confirms — enumeration over the run's audits, never an autonomous finding.
+pub fn report(run: &Path) -> Result<String> {
+    let audits = store::load_audits(run)?;
+    let mut by_author: BTreeMap<String, Vec<Pin>> = BTreeMap::new();
+    for a in audits {
+        by_author
+            .entry(a.author)
+            .or_default()
+            .extend(a.map_fragments);
+    }
+    let mut out = String::new();
+    for (author, pins) in &by_author {
+        for s in suggest(pins) {
+            let qa: String = pins[s.a].quote.chars().take(50).collect();
+            let qb: String = pins[s.b].quote.chars().take(50).collect();
+            out.push_str(&format!(
+                "[{author}] {} | a: \"{qa}\" | b: \"{qb}\"\n",
+                s.reason
+            ));
+        }
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

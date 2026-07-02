@@ -93,7 +93,7 @@ fn end_to_end_inline_persist_idempotency_and_input_pin() {
     // 3. write good audits + verdicts (with the real id)
     fs::write(run.join("audits.json"), good_audits.replace("{id}", &id)).unwrap();
     let verdicts = format!(
-        r#"[{{"claim_id":"{id}","label":"match","confidence":"high","load_bearing_pin":{{"person":"Test Author","source_ref":"book","source_path":"{book_s}","quote":"vectorized by -O3","kind":"book","gloss":null}},"temporal_flag":null,"votes":[],"rationale":"canon agrees"}}]"#
+        r#"[{{"claim_id":"{id}","label":"match","confidence":"high","load_bearing_pin":{{"person":"Test Author","source_ref":"book","source_path":"{book_s}","quote":"vectorized by -O3","kind":"book","gloss":null}},"temporal_flag":null,"rationale":"canon agrees"}}]"#
     );
     fs::write(run.join("verdicts.json"), &verdicts).unwrap();
 
@@ -619,7 +619,7 @@ fn inline_marks_and_frozen_canon_not_drift() {
     );
     fs::write(run.join("audits.json"), audits).unwrap();
     let verdicts = format!(
-        r#"[{{"claim_id":"{id}","label":"diverge","confidence":"high","load_bearing_pin":{{"person":"Test Author","source_ref":"evidence","source_path":"{evidence_s}","quote":"vectorized by -O3","kind":"book","gloss":null}},"temporal_flag":null,"votes":[],"rationale":"x"}}]"#
+        r#"[{{"claim_id":"{id}","label":"diverge","confidence":"high","load_bearing_pin":{{"person":"Test Author","source_ref":"evidence","source_path":"{evidence_s}","quote":"vectorized by -O3","kind":"book","gloss":null}},"temporal_flag":null,"rationale":"x"}}]"#
     );
     fs::write(run.join("verdicts.json"), &verdicts).unwrap();
 

@@ -48,9 +48,9 @@ gitignored. Record the run dir in chat — every subsequent step references it.
 
 ---
 
-## Step 2 — claim extraction (temp 0, strict JSON)
+## Step 2 — claim extraction (strict JSON)
 
-Extract every falsifiable claim from the source. Use `temp 0`. Produce `$RUN/claims.json`:
+Extract every falsifiable claim from the source. Produce `$RUN/claims.json`:
 
 ```json
 [
@@ -134,7 +134,7 @@ unmet and the operator must see that. Never present a same-vendor pass as cross-
 
 ---
 
-## Step 5 — verdict (temp 0, fixed rubric)
+## Step 5 — verdict (fixed rubric)
 
 Write `$RUN/verdicts.json` using the adversarial critique plus the audits. One `Verdict`
 object per claim:
@@ -146,7 +146,6 @@ object per claim:
   "confidence": "high" | "medium" | "low",
   "load_bearing_pin": { <Pin object or null> },
   "temporal_flag": "<string if evidence postdates the claim, else null>",
-  "votes": [],
   "rationale": "<why this label; reference the adversarial critique where relevant>"
 }
 ```
@@ -155,7 +154,6 @@ object per claim:
 - `not_falsifiable` claims are routed out of the rubric — they get no `match`/`refuted` call.
 - `nei` is first-class. Never force `match` or `refuted` when the evidence is insufficient.
 - Set `temporal_flag` when evidence postdates the claim date — flag only, never suppress.
-- `votes` is empty in v1 (schema-forward for v2 multi-vote).
 
 ---
 
@@ -251,9 +249,10 @@ Coverage is computed from the run artifacts; it is never stored.
 These trade tokens for confidence. Use on contested or high-stakes claims; skip on quick passes.
 
 - **Per-claim multi-vote verdict.** Instead of one verdict, spawn N independent judges per claim
-  (e.g. the main model + `grok-ro`, or different lenses); record each in the `votes` array
-  (`{"voter": "...", "label": "..."}`). Call the label only on a majority; otherwise `nei`.
-  Agreement level → confidence. Turns LLM variance into a measured number, not a coin flip.
+  (e.g. the main model + `grok-ro`, or different lenses); call the label only on a majority,
+  otherwise `nei`, and set confidence from the agreement level. Turns LLM variance into a measured
+  number, not a coin flip. (Persisting each individual vote in the schema is a v2 feature — v1
+  records only the resolved label + confidence.)
 - **Ensemble claim extraction.** Run extraction K times (or with K segmentations); union the
   claims; `falsify validate` assigns ids and `persist`'s near-dup detector flags reworded
   duplicates for merge. Note which claims appeared in all K passes vs only some — extraction

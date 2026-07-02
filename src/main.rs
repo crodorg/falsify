@@ -145,22 +145,7 @@ fn main() -> Result<()> {
         }
 
         Command::SuggestContradictions { run_dir } => {
-            let audits = store::load_audits(&PathBuf::from(&run_dir))?;
-            let mut by_author: std::collections::BTreeMap<String, Vec<Pin>> =
-                std::collections::BTreeMap::new();
-            for a in audits {
-                by_author
-                    .entry(a.author)
-                    .or_default()
-                    .extend(a.map_fragments);
-            }
-            for (author, pins) in &by_author {
-                for s in contradict::suggest(pins) {
-                    let qa: String = pins[s.a].quote.chars().take(50).collect();
-                    let qb: String = pins[s.b].quote.chars().take(50).collect();
-                    println!("[{author}] {} | a: \"{qa}\" | b: \"{qb}\"", s.reason);
-                }
-            }
+            print!("{}", contradict::report(&PathBuf::from(&run_dir))?);
             Ok(())
         }
     }
@@ -186,8 +171,6 @@ fn new_run(source: &str, as_of: &str, run_dir: Option<String>) -> Result<()> {
         source: source_hash,
         corpus_touched: vec![],
         artifacts: vec![],
-        model_ids: vec![],
-        prompt_hashes: vec![],
     };
     store::save_manifest(&run, &manifest)?;
     println!("{}", run.display());

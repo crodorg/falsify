@@ -9,6 +9,9 @@ use sha2::{Digest, Sha256};
 /// Bump on any breaking change to the on-disk JSON. Recorded in the run manifest.
 /// v2: discovery left the substrate — `SearchEnvelope`/`SearchHit` and `Audit.envelope_ref`
 /// removed; `SilenceFlag`'s scope/empty/replay fields are now computed by `verify-evidence`.
+/// v1.1 (kept at v2 — runs are ephemeral): added `RunManifest.artifacts` (own-artifact freeze);
+/// cut the never-populated `model_ids`/`prompt_hashes` and the `Vote`/`votes` v2 stub;
+/// every run-dir struct is now `deny_unknown_fields`.
 pub const SCHEMA_VERSION: u32 = 2;
 
 // ---- pins ----------------------------------------------------------------
@@ -169,14 +172,6 @@ pub enum Confidence {
     Low,
 }
 
-/// One judge's vote — v2 multi-vote. Empty in v1 (schema-forward, no break).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Vote {
-    pub voter: String,
-    pub label: Label,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Verdict {
@@ -188,9 +183,6 @@ pub struct Verdict {
     /// Set when evidence postdates the claim (temporal guard) — a flag, not a suppression.
     #[serde(default)]
     pub temporal_flag: Option<String>,
-    /// v2 multi-vote record; empty in v1.
-    #[serde(default)]
-    pub votes: Vec<Vote>,
     pub rationale: String,
 }
 
@@ -225,10 +217,6 @@ pub struct RunManifest {
     /// pin into canon. Without this the absence gate is only the model's word between the two steps.
     #[serde(default)]
     pub artifacts: Vec<FileHash>,
-    #[serde(default)]
-    pub model_ids: Vec<String>,
-    #[serde(default)]
-    pub prompt_hashes: Vec<String>,
 }
 
 // ---- hashing + normalizers (the determinism linchpin) --------------------

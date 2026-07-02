@@ -72,8 +72,8 @@ fn snapshot_guard_warns_on_dropped_claims() {
             {{"claim_id":"{id2}","author":"a","map_fragments":[{{"person":"P","source_ref":"b","source_path":"{book_s}","quote":"Claim two text here","kind":"book","gloss":null}}],"contradictions":[],"silence":null}}]"#
     );
     let verdicts_both = format!(
-        r#"[{{"claim_id":"{id1}","label":"match","confidence":"low","load_bearing_pin":null,"temporal_flag":null,"votes":[],"rationale":"x"}},
-            {{"claim_id":"{id2}","label":"match","confidence":"low","load_bearing_pin":null,"temporal_flag":null,"votes":[],"rationale":"x"}}]"#
+        r#"[{{"claim_id":"{id1}","label":"match","confidence":"low","load_bearing_pin":null,"temporal_flag":null,"rationale":"x"}},
+            {{"claim_id":"{id2}","label":"match","confidence":"low","load_bearing_pin":null,"temporal_flag":null,"rationale":"x"}}]"#
     );
     fs::write(run.join("audits.json"), &audits_both).unwrap();
     fs::write(run.join("verdicts.json"), &verdicts_both).unwrap();
@@ -112,7 +112,7 @@ fn snapshot_guard_warns_on_dropped_claims() {
         r#"[{{"claim_id":"{id1}","author":"a","map_fragments":[{{"person":"P","source_ref":"b","source_path":"{book_s}","quote":"Claim one text here","kind":"book","gloss":null}}],"contradictions":[],"silence":null}}]"#
     );
     let verdicts_one = format!(
-        r#"[{{"claim_id":"{id1}","label":"match","confidence":"low","load_bearing_pin":null,"temporal_flag":null,"votes":[],"rationale":"x"}}]"#
+        r#"[{{"claim_id":"{id1}","label":"match","confidence":"low","load_bearing_pin":null,"temporal_flag":null,"rationale":"x"}}]"#
     );
     fs::write(run.join("audits.json"), &audits_one).unwrap();
     fs::write(run.join("verdicts.json"), &verdicts_one).unwrap();
