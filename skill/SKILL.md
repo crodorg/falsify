@@ -206,7 +206,10 @@ falsify persist --run-dir "$RUN" --page "<canon-page>" --topic "<Topic Label>" -
 step, or a proposal gone stale because the run artifacts or the host page changed since, aborts —
 re-run without `--apply`, review, then `--apply`).
 
-Re-running a topic UPDATES its block in place (idempotent splice) — it never forks a new file. The
+Re-running a topic REPLACES its block in place (a per-run snapshot — latest run wins — never a new
+file). The block records its claim ids in a `claims=` fence attribute, so a re-persist from a run
+that dropped a previously-recorded claim prints a `WARNING: … DROPS …` (the verdict is being
+removed) — re-run with those claims to keep them. Machine-readable merge-by-id across runs is v2. The
 block follows the wiki's dispute schema as `###` subsections: `### Positions`, `### Nature of the
 disagreement`, `### Status` table, `### UNADDRESSED`, `### My read`. `### My read` is operator-only
 and marker-protected — `persist` never writes into it. A malformed (unbalanced) falsify fence on any

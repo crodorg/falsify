@@ -14,7 +14,8 @@ It is two pieces:
    terms across the scope it enumerates; any hit fails the run), **input-pinning** (it
    content-hashes the source bytes and every canon slice consulted, and refuses to persist if any
    drifted), a coverage report, and it is the **sole writer** of falsify-fenced blocks into canon
-   pages (merge-by-id, near-dup detection, propose-diff, idempotent splice). It is golden-tested:
+   pages (a snapshot per topic — latest run wins, guarded so it can't silently drop a recorded
+   claim — near-dup detection, propose-diff, idempotent splice). It is golden-tested:
    same inputs → same outputs.
 2. **A Claude Code skill (`/falsify`)** — the reasoning layer. It extracts the claims, spawns a
    subagent to drill the wiki canon for self-contradictions and silences, runs an adversarial pass
@@ -115,7 +116,10 @@ deterministic stages run in the binary.
 5. **Persist.** `falsify persist --page <canon-page>` writes the synthesis inline into the named
    wiki page as a `<!-- falsify:begin topic=… -->` block, drops one-line backlink marks on the
    other audited pages, and emits a **proposed diff** (`<page>.proposed`) for you to approve —
-   never a blind overwrite. Re-running a topic is a convergent, zero-diff splice.
+   never a blind overwrite. Re-running a topic is a convergent, zero-diff splice. The block is a
+   **snapshot** — regenerated from the current run, so a re-persist replaces it wholesale (latest
+   run wins); a `claims=` fence attribute lets `persist` warn if a re-run would drop a claim the
+   prior block recorded. Machine-readable merge-by-id across runs is v2.
 
 ## What the binary guarantees (and what it doesn't)
 
@@ -125,9 +129,9 @@ otherwise.
 
 - **Deterministic, golden-tested:** pin existence-verification, the declared-slice re-grep,
   claim-ID normalization, cross-reference + schema integrity (`deny_unknown_fields`), the
-  falsifiability gate, merge/persist, coverage, near-dup detection. Same inputs → same outputs. (The
-  *temporal flag* is an LLM-supplied annotation the binary only renders — not a computed gate — so
-  it is not on this list.)
+  falsifiability gate, snapshot persist, coverage, near-dup detection. Same inputs → same outputs.
+  (The *temporal flag* is an LLM-supplied annotation the binary only renders — not a computed gate —
+  so it is not on this list.)
 - **The pin-gate guards fabrication, not correctness.** Every quote a verdict cites must exist
   verbatim in its named source or the write aborts — so the LLM cannot invent an exhibit. It does
   *not* make the label right; a real quote can be cherry-picked under the wrong label. That is
@@ -150,9 +154,10 @@ otherwise.
 
 - Requires Claude Code; there is no standalone CLI that produces verdicts.
 - Requires a curated markdown wiki — it audits what you already trust; it does not build the corpus.
-- v1 runs the local-canon and adversarial passes on a single source into one topic. The
-  external-literature pass (`--with-dataset`, via recon), per-claim multi-vote council, and a
-  cross-topic claims ledger are v2.
+- v1 runs the local-canon and adversarial passes on a single source into one topic, and each topic
+  block is a per-run **snapshot** (re-persisting replaces it — guarded against silent claim loss).
+  The external-literature pass (`--with-dataset`, via recon), per-claim multi-vote council, a
+  cross-topic claims ledger, and machine-readable **merge-by-id across runs** are v2.
 - The trust tiers and canon layout reflect my wiki's conventions; adapt them to yours.
 - This is a personal tool shared as-is — issues and PRs welcome, but support is best-effort.
 

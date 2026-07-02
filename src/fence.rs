@@ -139,9 +139,52 @@ pub fn upsert_block(text: &str, key: &str, block: &str) -> String {
     }
 }
 
+/// Build the opening fence line for `key`, optionally with extra space-separated attributes (e.g.
+/// `claims=a,b`) between `created=` and the closing ` -->` (no trailing newline).
+pub fn begin_line_with(key: &str, created: &str, extra_attrs: &str) -> String {
+    if extra_attrs.is_empty() {
+        format!("{BEGIN} {key} created={created} -->")
+    } else {
+        format!("{BEGIN} {key} created={created} {extra_attrs} -->")
+    }
+}
+
 /// Build the opening fence line for `key` (no trailing newline).
 pub fn begin_line(key: &str, created: &str) -> String {
-    format!("{BEGIN} {key} created={created} -->")
+    begin_line_with(key, created, "")
+}
+
+/// The comma-separated `claims=<id,id,…>` attribute from a begin fence line, if present. Lets
+/// `persist` see which claims the existing block records, so a re-persist that would drop some
+/// (snapshot semantics: latest run wins) can warn instead of losing them silently.
+pub fn existing_claims(begin_line: &str) -> Vec<String> {
+    let Some(i) = begin_line.find("claims=") else {
+        return vec![];
+    };
+    begin_line[i + "claims=".len()..]
+        .chars()
+        .take_while(|c| !c.is_whitespace())
+        .collect::<String>()
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Remove the block keyed by `key` if present, returning the text without it. `None` if absent.
+/// Collapses the blank-line seam the removal would otherwise leave, so a GC'd page stays tidy.
+pub fn remove_block(text: &str, key: &str) -> Option<String> {
+    let (s, e) = find_block(text, key)?;
+    let mut out = String::with_capacity(text.len());
+    out.push_str(text[..s].trim_end_matches('\n'));
+    let tail = text[e..].trim_start_matches('\n');
+    if !out.is_empty() && !tail.is_empty() {
+        out.push_str("\n\n");
+    } else if !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(tail);
+    Some(out)
 }
 
 /// Build the closing fence line for `key` (no trailing newline).
@@ -202,6 +245,38 @@ mod tests {
         // an `end` with no matching `begin` is malformed — fail closed, don't leak it as canon
         let bad = "intro\n<!-- falsify:end topic=x -->\ntrailing\n";
         assert!(strip(bad).is_err());
+    }
+
+    #[test]
+    fn claims_attr_round_trips() {
+        let line = begin_line_with("topic=x", "2026-06-14", "claims=aaa,bbb,ccc");
+        assert!(
+            has_key(&line, "topic=x"),
+            "claims attr must not break key match"
+        );
+        assert_eq!(existing_claims(&line), vec!["aaa", "bbb", "ccc"]);
+        // a begin line with no claims attr yields none
+        assert!(existing_claims(&begin_line("topic=x", "d")).is_empty());
+    }
+
+    #[test]
+    fn remove_block_deletes_and_tidies() {
+        let page = format!(
+            "# Page\n\ncanon.\n\n{}\nmark body\n{}\n",
+            begin_line("mark=x", "d"),
+            end_line("mark=x")
+        );
+        let out = remove_block(&page, "mark=x").unwrap();
+        assert!(!out.contains("mark body"), "block must be gone");
+        assert!(
+            out.contains("# Page") && out.contains("canon."),
+            "canon preserved"
+        );
+        assert!(!out.contains("\n\n\n"), "no blank-line pileup at the seam");
+        assert!(
+            remove_block(&out, "mark=x").is_none(),
+            "removing an absent block is None"
+        );
     }
 
     #[test]
