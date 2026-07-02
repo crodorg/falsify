@@ -107,7 +107,9 @@ deterministic stages run in the binary.
 2. **Local canon audit.** A subagent drills your wiki for each claim — verbatim self-contradictions
    within an author's corpus, divergences across authors, and conspicuous silences. Every position
    is pinned to a verbatim quote in a named source.
-3. **Adversarial pass.** A cross-vendor review (Grok) checks whether each pin actually justifies its
+3. **Adversarial pass.** A cross-vendor review (Grok — handed a self-contained bundle staged into
+   the working directory so the sandboxed reviewer can actually read it; falls back to a same-vendor
+   pass, labeled as such, if none is available) checks whether each pin actually justifies its
    proposed label or is cherry-picked / out of context. This defends label-correctness, which the
    pin-gate alone cannot.
 4. **Verdict.** A fixed rubric assigns each claim MATCH / DIVERGE / REFUTED / NEI with a confidence

@@ -12,13 +12,19 @@ under its label. That is this reviewer's job.
 
 ## Inputs (from the orchestrator)
 
-The compact bundle:
+A **self-contained** bundle staged INTO the current working directory (e.g.
+`./.falsify-review/bundle.json`) — never run-dir or wiki paths. The reviewer is kernel-sandboxed to
+the CWD and cannot read `~/.local/share/falsify` or `~/wiki`, so every pin quote is inlined and the
+bundle needs no outside access. It carries:
 
 - `claims[]` — extracted claims with ids
 - `draft_positions` — per-claim draft MATCH/DIVERGE/REFUTED/NEI
 - `contradictions[]` — intra-author pairs from the local-audit pass
-- `pins[]` — all map fragments (attributed verbatim pins)
+- `pins[]` — all map fragments (attributed verbatim pins, **quote inline**)
 - `draft_verdicts[]` — pre-adversarial verdict rationales
+
+If the bundle isn't present in the CWD, say so and stop — do not guess from memory; the orchestrator
+must stage it (or fall back to a same-vendor pass, labeled as such).
 
 ## What to interrogate
 

@@ -102,20 +102,35 @@ The auditor subagent is isolated — wiki-drilling noise never reaches the main 
 
 ---
 
-## Step 4 — adversarial pass
+## Step 4 — adversarial pass (cross-vendor when available)
 
-Spawn **`subagents/adversarial.md`** with the compact bundle:
-`claims.json` + `audits.json` + the per-claim proposed labels.
+This is v1's defense of **label-correctness** — the pin-gate proves a quote exists, not that it is
+fairly used under its label. Run it **cross-vendor** (a different model family than ran the audit),
+so the critique isn't the same model grading its own work.
 
-The adversarial subagent audits:
-- **Pin-vs-label fit:** does each verbatim pin actually support its proposed label, or is it
-  cherry-picked / out of context?
-- **Fairness:** is each side represented proportionally, or does framing bias the synthesis?
-- **Understated agreement:** where do the sources agree more than the labels imply?
-- **Missed self-contradiction:** are there contradiction pairs the local-auditor subagent
-  missed?
+**Stage the bundle where the sandboxed reviewer can read it.** `grok-ro` is kernel-sandboxed to the
+current working directory and **cannot read the run dir (`~/.local/share/falsify`) or `~/wiki`** — a
+reviewer handed run-dir paths silently sees nothing, and the pass degrades to same-vendor without
+anyone noticing. So write a **self-contained** bundle INTO the CWD (which the sandbox can read):
 
-It returns a structured critique. Fold the findings into the verdict step.
+```sh
+mkdir -p ./.falsify-review
+# one self-contained bundle — every pin quote inline (NOT a path), so the reviewer needs no
+# access to the run dir or the wiki:
+#   claims[] (with ids) · draft per-claim label + rationale · contradiction pairs ·
+#   all map-fragment pins (source_ref + verbatim quote) · draft verdict rationales
+#   > ./.falsify-review/bundle.json   (claims.json + audits.json + your in-chat draft labels)
+```
+
+Then spawn **`subagents/adversarial.md`** via `grok-ro`, pointed at `./.falsify-review/bundle.json`.
+It interrogates: pin-vs-label fit, fairness / understated agreement, missed self-contradiction, and
+overreach; it returns a structured findings list. Fold the findings into the verdict step, then
+remove `./.falsify-review`.
+
+**Honest fallback.** If no cross-vendor reviewer is available (or its sandbox still can't read the
+bundle), run the **same** critique with the main model and **label the output `(same-vendor)`** in
+chat — the label-correctness pass still runs and is still useful, but the cross-vendor guarantee is
+unmet and the operator must see that. Never present a same-vendor pass as cross-vendor.
 
 ---
 

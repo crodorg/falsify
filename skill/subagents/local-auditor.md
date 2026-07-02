@@ -128,7 +128,10 @@ variants honestly.)
 
 ## Output
 
-Append one `Audit` object to `<run_dir>/audits.json` per (claim, author) pair:
+**Return** one `Audit` object (as JSON) to the orchestrator per (claim, author) pair — do NOT write
+`audits.json` yourself. The orchestrator is the **single writer**: it collects every subagent's
+returned Audit objects and writes them as one JSON array. (Parallel subagents appending to a shared
+file would race and corrupt it — so the merge is the orchestrator's job, never the subagent's.)
 
 ```json
 {
@@ -140,7 +143,7 @@ Append one `Audit` object to `<run_dir>/audits.json` per (claim, author) pair:
 }
 ```
 
-After all audits are written, the orchestrator runs `falsify verify-evidence` (validates every
+After the orchestrator has written all audits, it runs `falsify verify-evidence` (validates every
 silence flag by attempted falsification, and freezes the input slice into the manifest) and then
 `falsify verify-pins` (presence gate). If either fails, fix the offending audit and re-run — never
 edit a quote or a silence claim just to pass a gate.
