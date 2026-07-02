@@ -2,6 +2,7 @@
 //! claim id, and the determinism-critical normalizers. This is the seam — the LLM
 //! proposes these structures, Rust validates and pins them.
 
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -27,6 +28,7 @@ pub enum PinKind {
 /// (per the wiki: "cite a quote, never a line number"); `source_path` is where
 /// `verify-pins` deterministically confirms the quote exists.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct Pin {
     /// Attributed author (links to entities/<person>.md).
     pub person: String,
@@ -56,6 +58,7 @@ pub enum Falsifiability {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Claim {
     /// Content-addressed id = sha256(normalize_claim(claim))[..12]. Assigned by
     /// `validate`/loading, never emitted by the LLM. Stable across runs so
@@ -76,6 +79,7 @@ pub struct Claim {
 // ---- audit ---------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ContradictionPair {
     pub a: Pin,
     pub b: Pin,
@@ -108,6 +112,7 @@ pub enum SilenceScopeKind {
 /// fields below and the flag stands, otherwise the run fails (the absence claim was refuted). So
 /// `corpus_scope`/`lexical_empty`/`replay_hash` are machine-written, never the model's word.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SilenceFlag {
     /// The subject of the silence — a book-corpus key when scope=author_books, else a display
     /// label (e.g. "wiki canon").
@@ -130,6 +135,7 @@ pub struct SilenceFlag {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Audit {
     pub claim_id: String,
     pub author: String,
@@ -165,12 +171,14 @@ pub enum Confidence {
 
 /// One judge's vote — v2 multi-vote. Empty in v1 (schema-forward, no break).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Vote {
     pub voter: String,
     pub label: Label,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Verdict {
     pub claim_id: String,
     pub label: Label,
@@ -189,6 +197,7 @@ pub struct Verdict {
 // ---- run manifest --------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct FileHash {
     pub path: String,
     pub sha256: String,
@@ -197,6 +206,7 @@ pub struct FileHash {
 /// Input-pinning: a run is only meaningful relative to the exact bytes it ran
 /// against. Without this the pin seam and idempotent merge are non-reproducible.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RunManifest {
     pub run_id: String,
     pub created: String,
@@ -209,6 +219,12 @@ pub struct RunManifest {
     /// drift) — this is what makes a verdict replayable against a pinned corpus.
     #[serde(default)]
     pub corpus_touched: Vec<FileHash>,
+    /// The run's OWN decision artifacts (audits.json, verdicts.json), content-hashed at the moment
+    /// `verify-evidence` validated them. `persist` recomputes and aborts on drift — so an edit to
+    /// audits/verdicts *after* the gates ran can't smuggle an unverified silence flag or a mis-fit
+    /// pin into canon. Without this the absence gate is only the model's word between the two steps.
+    #[serde(default)]
+    pub artifacts: Vec<FileHash>,
     #[serde(default)]
     pub model_ids: Vec<String>,
     #[serde(default)]
@@ -299,6 +315,62 @@ pub fn claim_similarity(a: &str, b: &str) -> f64 {
     } else {
         inter / union
     }
+}
+
+// ---- deterministic integrity gates (validate + persist) -----------------
+
+/// Cross-referential integrity: every audit and verdict must reference a real claim id. A dangling
+/// ref means the LLM drifted — a typo'd or stale id — and `persist` would otherwise render it as
+/// "(unknown claim)" straight into canon. Deterministic; abort rather than paper over. A no-op when
+/// audits/verdicts are absent (validate runs before they exist).
+pub fn check_claim_refs(claims: &[Claim], audits: &[Audit], verdicts: &[Verdict]) -> Result<()> {
+    use std::collections::BTreeSet;
+    let ids: BTreeSet<&str> = claims.iter().map(|c| c.id.as_str()).collect();
+    for a in audits {
+        if !ids.contains(a.claim_id.as_str()) {
+            bail!(
+                "integrity: audit references unknown claim id `{}` — no such claim (extraction/audit drift)",
+                a.claim_id
+            );
+        }
+    }
+    for v in verdicts {
+        if !ids.contains(v.claim_id.as_str()) {
+            bail!(
+                "integrity: verdict references unknown claim id `{}` — no such claim (verdict/extraction drift)",
+                v.claim_id
+            );
+        }
+    }
+    Ok(())
+}
+
+/// The falsifiability gate (deterministic — claim.falsifiability × verdict.label). A
+/// `not_falsifiable` claim is routed OUT of the MATCH/DIVERGE/REFUTED/NEI rubric, so its verdict
+/// must be `not_falsifiable`; a `falsifiable` claim must NOT be labeled `not_falsifiable`. Enforced
+/// here in Rust rather than trusted from the LLM, so the deterministic-gate claim is real.
+pub fn check_falsifiability_gate(claims: &[Claim], verdicts: &[Verdict]) -> Result<()> {
+    for v in verdicts {
+        let Some(claim) = claims.iter().find(|c| c.id == v.claim_id) else {
+            continue; // dangling refs are check_claim_refs' job
+        };
+        match (&claim.falsifiability, &v.label) {
+            (Falsifiability::NotFalsifiable, Label::NotFalsifiable) => {}
+            (Falsifiability::NotFalsifiable, other) => bail!(
+                "falsifiability gate: claim {} is not_falsifiable but its verdict is {:?} — a \
+                 non-falsifiable claim gets no match/diverge/refuted/nei call",
+                v.claim_id,
+                other
+            ),
+            (Falsifiability::Falsifiable, Label::NotFalsifiable) => bail!(
+                "falsifiability gate: claim {} is falsifiable but labeled not_falsifiable — route \
+                 it through the rubric or fix the claim's falsifiability",
+                v.claim_id
+            ),
+            (Falsifiability::Falsifiable, _) => {}
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

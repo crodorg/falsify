@@ -8,18 +8,9 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::process::{Command, Output};
 
-const BIN: &str = env!("CARGO_BIN_EXE_falsify");
-
-fn falsify(args: &[&str], corpus: &str, wiki: &str) -> Output {
-    Command::new(BIN)
-        .args(args)
-        .env("FALSIFY_CORPUS_ROOT", corpus)
-        .env("FALSIFY_WIKI_ROOT", wiki)
-        .output()
-        .expect("run falsify")
-}
+mod common;
+use common::{falsify, persist_apply};
 
 #[test]
 fn end_to_end_inline_persist_idempotency_and_input_pin() {
@@ -141,11 +132,7 @@ fn end_to_end_inline_persist_idempotency_and_input_pin() {
         "--topic",
         "O3 speedup evidence vs canon",
     ];
-    let o = falsify(
-        &[&persist_args[..], &["--apply"]].concat(),
-        corpus_s,
-        wiki_s,
-    );
+    let o = persist_apply(&persist_args, corpus_s, wiki_s);
     assert!(
         o.status.success(),
         "persist: {}",
@@ -181,12 +168,8 @@ fn end_to_end_inline_persist_idempotency_and_input_pin() {
         "must NOT write a standalone comparisons/ page"
     );
 
-    // 7. IDEMPOTENCY: re-persist the same run → byte-identical
-    let o = falsify(
-        &[&persist_args[..], &["--apply"]].concat(),
-        corpus_s,
-        wiki_s,
-    );
+    // 7. IDEMPOTENCY: re-persist the same run (propose+apply again) → byte-identical
+    let o = persist_apply(&persist_args, corpus_s, wiki_s);
     assert!(o.status.success());
     let p2 = fs::read_to_string(&page).unwrap();
     assert_eq!(p1, p2, "persist must be idempotent (zero diff on re-run)");
@@ -197,11 +180,7 @@ fn end_to_end_inline_persist_idempotency_and_input_pin() {
         "MY ACTUAL TAKE: -O3 is usually fine.\n\n*Operator only.",
     );
     fs::write(&page, &edited).unwrap();
-    let _ = falsify(
-        &[&persist_args[..], &["--apply"]].concat(),
-        corpus_s,
-        wiki_s,
-    );
+    let _ = persist_apply(&persist_args, corpus_s, wiki_s);
     let p3 = fs::read_to_string(&page).unwrap();
     assert!(
         p3.contains("MY ACTUAL TAKE: -O3 is usually fine."),
@@ -213,20 +192,16 @@ fn end_to_end_inline_persist_idempotency_and_input_pin() {
     );
 
     // 8b. MULTI-TOPIC: a second topic on the same page coexists with the first.
-    let o = falsify(
-        &[
-            "persist",
-            "--run-dir",
-            runp,
-            "--page",
-            "concepts/compiler-optimization.md",
-            "--topic",
-            "Link-time optimization",
-            "--apply",
-        ],
-        corpus_s,
-        wiki_s,
-    );
+    let topic2_args = [
+        "persist",
+        "--run-dir",
+        runp,
+        "--page",
+        "concepts/compiler-optimization.md",
+        "--topic",
+        "Link-time optimization",
+    ];
+    let o = persist_apply(&topic2_args, corpus_s, wiki_s);
     assert!(
         o.status.success(),
         "second topic persist: {}",
@@ -324,6 +299,41 @@ fn end_to_end_inline_persist_idempotency_and_input_pin() {
     assert!(
         String::from_utf8_lossy(&o.stderr).contains("drifted"),
         "drift abort should say so: {}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+
+    // 14. ARTIFACT FREEZE (A2): editing audits.json AFTER verify-evidence must abort persist — the
+    //     absence gate's validated fields are otherwise the model's word between verify-evidence and
+    //     persist. Restore the corpus, re-freeze, then forge a "validated" silence flag.
+    fs::write(
+        &book,
+        "Chapter one.\nThe hot loop is vectorized by -O3 in tight numeric code.\nNothing here about that other thing.\n",
+    )
+    .unwrap();
+    fs::write(run.join("audits.json"), good_audits.replace("{id}", &id)).unwrap();
+    fs::write(run.join("verdicts.json"), &verdicts).unwrap();
+    let o = falsify(&["verify-evidence", "--run-dir", runp], corpus_s, wiki_s);
+    assert!(
+        o.status.success(),
+        "re-freeze for artifact test: {}",
+        String::from_utf8_lossy(&o.stdout)
+    );
+    // forge a silence flag with fake computed fields (the exact post-gate tamper A2 defends against)
+    let tampered = format!(
+        r#"[{{"claim_id":"{id}","author":"testauthor",
+        "map_fragments":[{{"person":"Test Author","source_ref":"book","source_path":"{book_s}","quote":"The hot loop is vectorized by -O3","kind":"book","gloss":"-O3 vectorizes the hot loop"}}],
+        "contradictions":[],
+        "silence":{{"author":"testauthor","terms_searched":["profile-guided","autotuning"],"scope":"author_books","corpus_scope":["{book_s}"],"lexical_empty":true,"mechanism_checked":true,"replay_hash":"deadbeefdeadbeef"}}}}]"#
+    );
+    fs::write(run.join("audits.json"), tampered).unwrap();
+    let o = falsify(&persist_args, corpus_s, wiki_s); // propose mode is enough — abort is pre-write
+    assert!(
+        !o.status.success(),
+        "editing audits.json after verify-evidence must abort persist"
+    );
+    assert!(
+        String::from_utf8_lossy(&o.stderr).contains("changed since verify-evidence"),
+        "artifact-drift abort should say so: {}",
         String::from_utf8_lossy(&o.stderr)
     );
 }
@@ -637,7 +647,7 @@ fn inline_marks_and_frozen_canon_not_drift() {
         "--topic",
         "O3 speedup",
     ];
-    let o = falsify(&[&pargs[..], &["--apply"]].concat(), corpus_s, wiki_s);
+    let o = persist_apply(&pargs, corpus_s, wiki_s);
     assert!(
         o.status.success(),
         "persist: {}",
@@ -671,7 +681,7 @@ fn inline_marks_and_frozen_canon_not_drift() {
 
     // FROZEN-CANON-NOT-DRIFT: evidence.md was frozen, now carries a mark fence. A second persist
     // must NOT abort — the input-pin re-check reads the canon view (mark stripped) and still matches.
-    let o = falsify(&[&pargs[..], &["--apply"]].concat(), corpus_s, wiki_s);
+    let o = persist_apply(&pargs, corpus_s, wiki_s);
     assert!(
         o.status.success(),
         "writing a falsify block into frozen canon must not register as drift:\n{}",

@@ -110,6 +110,17 @@ pub fn persist(run: &Path, page_arg: &str, topic: &str, apply: bool) -> Result<(
     let verdicts = store::load_verdicts(run)?;
     let manifest = store::load_manifest(run)?;
 
+    // 0. deterministic schema integrity (cheap, no IO): every audit/verdict must reference a real
+    //    claim, and the falsifiability gate (claim.falsifiability × verdict.label) must hold. Abort
+    //    on drift rather than render "(unknown claim)" or a mis-routed label into canon.
+    check_claim_refs(&claims, &audits, &verdicts)?;
+    check_falsifiability_gate(&claims, &verdicts)?;
+
+    // 0b. artifact freeze re-check: audits.json + verdicts.json must hash to exactly what
+    //     `verify-evidence` froze — so an edit after the gates ran can't smuggle an unverified
+    //     silence flag or a swapped pin past them.
+    artifact_recheck(&manifest)?;
+
     // 1. input-pin re-check: every load-bearing file must be FROZEN in the manifest and UNCHANGED
     //    (over the canon view) since the audit. Missing ⇒ verify-evidence wasn't run; mismatch ⇒
     //    the canon drifted and the verdict no longer rests on what it was judged against.
@@ -211,22 +222,48 @@ pub fn persist(run: &Path, page_arg: &str, topic: &str, apply: bool) -> Result<(
         edits.push((src, new_mark_page));
     }
 
-    // 6. propose-diff (write <file>.proposed); --apply installs in place.
+    // 6. propose-diff / apply. Propose writes <page>.proposed (never touches canon). --apply
+    //    installs ONLY the reviewed proposal: for every target it requires a <page>.proposed that
+    //    is byte-identical to the freshly-regenerated content, else it aborts. So the reviewed
+    //    bytes are the installed bytes, a one-shot --apply that skipped propose+review is refused,
+    //    and a proposal gone stale (run artifacts or the host page changed since) fails loudly.
     for (a, b, s) in &dups {
         eprintln!("near-dup: claims {a} ~ {b} (sim {s:.2}) — operator should merge");
     }
     if apply {
+        // First pass: every target must carry a matching reviewed proposal (validate before any
+        // write, so a stale target can't leave the wiki half-installed).
+        for (path, content) in &edits {
+            let proposed = proposed_path(path);
+            let reviewed = match fs::read_to_string(&proposed) {
+                Ok(s) => s,
+                Err(_) => bail!(
+                    "no proposal for {} — run persist without --apply first, review the diff, then --apply",
+                    path.display()
+                ),
+            };
+            if &reviewed != content {
+                bail!(
+                    "proposal for {} is stale (regenerated content differs from {}) — the run \
+                     artifacts or the host page changed since; re-propose (run without --apply), \
+                     review, then --apply",
+                    path.display(),
+                    proposed.display()
+                );
+            }
+        }
+        // Second pass: install.
         for (path, content) in &edits {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
             }
             fs::write(path, content).with_context(|| format!("write {}", path.display()))?;
-            let _ = fs::remove_file(path.with_extension("md.proposed"));
+            let _ = fs::remove_file(proposed_path(path));
             println!("installed {}", path.display());
         }
     } else {
         for (path, content) in &edits {
-            let proposed = path.with_extension("md.proposed");
+            let proposed = proposed_path(path);
             if let Some(parent) = proposed.parent() {
                 fs::create_dir_all(parent)?;
             }
@@ -245,6 +282,39 @@ pub fn persist(run: &Path, page_arg: &str, topic: &str, apply: bool) -> Result<(
             page.display(),
             topic
         );
+    }
+    Ok(())
+}
+
+/// The `<page>.proposed` path for a target page (e.g. `foo.md` → `foo.md.proposed`).
+fn proposed_path(path: &Path) -> PathBuf {
+    path.with_extension("md.proposed")
+}
+
+/// A2: the run's own decision artifacts (audits.json, verdicts.json) must hash to exactly what
+/// `verify-evidence` froze into the manifest. An empty frozen set means verify-evidence never ran;
+/// a mismatch means audits/verdicts were edited after the gates — either way the verdict about to
+/// be written is not the one that was validated, so refuse.
+fn artifact_recheck(manifest: &RunManifest) -> Result<()> {
+    if manifest.artifacts.is_empty() {
+        bail!(
+            "artifacts not frozen — run `falsify verify-evidence` before persist (it validates \
+             silence AND freezes audits/verdicts so a later edit can't slip past the gates)"
+        );
+    }
+    for fh in &manifest.artifacts {
+        let now = store::file_hash(Path::new(&fh.path))
+            .with_context(|| format!("re-hash artifact {}", fh.path))?
+            .sha256;
+        if now != fh.sha256 {
+            bail!(
+                "artifact {} changed since verify-evidence (frozen {}…, now {}…) — audits/verdicts \
+                 were edited after the gates ran; re-run `falsify verify-evidence`",
+                fh.path,
+                &fh.sha256[..8.min(fh.sha256.len())],
+                &now[..8.min(now.len())]
+            );
+        }
     }
     Ok(())
 }

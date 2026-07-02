@@ -200,6 +200,11 @@ each proposed diff. On approval:
 falsify persist --run-dir "$RUN" --page "<canon-page>" --topic "<Topic Label>" --apply
 ```
 
+`--apply` installs **only** a reviewed proposal: it regenerates the content and refuses unless a
+`<page>.proposed` exists and is byte-identical (so a one-shot `--apply` that skipped the propose
+step, or a proposal gone stale because the run artifacts or the host page changed since, aborts —
+re-run without `--apply`, review, then `--apply`).
+
 Re-running a topic UPDATES its block in place (idempotent splice) — it never forks a new file. The
 block follows the wiki's dispute schema as `###` subsections: `### Positions`, `### Nature of the
 disagreement`, `### Status` table, `### UNADDRESSED`, `### My read`. `### My read` is operator-only

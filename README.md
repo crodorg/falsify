@@ -124,8 +124,10 @@ auditable and pinned, not bit-reproducible — and the README says so plainly ra
 otherwise.
 
 - **Deterministic, golden-tested:** pin existence-verification, the declared-slice re-grep,
-  claim-ID normalization, merge/persist, coverage, the falsifiability and temporal gates, near-dup
-  detection. Same inputs → same outputs.
+  claim-ID normalization, cross-reference + schema integrity (`deny_unknown_fields`), the
+  falsifiability gate, merge/persist, coverage, near-dup detection. Same inputs → same outputs. (The
+  *temporal flag* is an LLM-supplied annotation the binary only renders — not a computed gate — so
+  it is not on this list.)
 - **The pin-gate guards fabrication, not correctness.** Every quote a verdict cites must exist
   verbatim in its named source or the write aborts — so the LLM cannot invent an exhibit. It does
   *not* make the label right; a real quote can be cherry-picked under the wrong label. That is
@@ -133,6 +135,10 @@ otherwise.
 - **Input-pinning is enforced, not just recorded.** Each run content-hashes the source bytes and
   every canon slice actually consulted; `persist` re-checks those hashes and aborts if anything
   drifted since the run — a verdict can never silently rest on canon that changed underneath it.
+  The run's own audits and verdicts are frozen the same way at `verify-evidence`, so a post-gate
+  edit that would slip an unverified silence flag or a swapped pin past the checks aborts `persist`
+  too. And `--apply` installs only the reviewed `.proposed` byte-for-byte: a one-shot apply that
+  skipped review, or a proposal gone stale, is refused — the bytes you approved are the bytes written.
 - **Silence is corroborated, never confirmed.** Absence is a universal claim Rust cannot certify.
   An UNADDRESSED flag fires only when a declared lexical slice re-greps empty *and* a
   mechanism-level pass shows non-engagement. It is a flag, never an autonomous verdict.

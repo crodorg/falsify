@@ -99,6 +99,14 @@ fn main() -> Result<()> {
             let run = PathBuf::from(&run_dir);
             let claims = store::load_claims(&run)?; // assigns content-addressed ids
             store::write_json(&store::claims_path(&run), &claims)?; // write back with ids
+
+            // If audits/verdicts already exist (a re-validate), enforce cross-ref integrity + the
+            // falsifiability gate now too — a dangling id or mis-routed label should fail as early
+            // as possible, not silently ride to persist. Both no-op before those files exist.
+            let audits = store::load_audits(&run)?;
+            let verdicts = store::load_verdicts(&run)?;
+            check_claim_refs(&claims, &audits, &verdicts)?;
+            check_falsifiability_gate(&claims, &verdicts)?;
             for c in &claims {
                 let g: String = c.claim.chars().take(70).collect();
                 println!("{}  {}", c.id, g);
@@ -177,6 +185,7 @@ fn new_run(source: &str, as_of: &str, run_dir: Option<String>) -> Result<()> {
         as_of: as_of.to_string(),
         source: source_hash,
         corpus_touched: vec![],
+        artifacts: vec![],
         model_ids: vec![],
         prompt_hashes: vec![],
     };

@@ -237,8 +237,19 @@ pub fn verify_evidence(run: &Path) -> Result<EvidenceReport> {
             .map(|(path, sha256)| FileHash { path, sha256 })
             .collect();
         m.corpus_touched.sort_by(|a, b| a.path.cmp(&b.path));
-        store::save_manifest(run, &m)?;
+        // Write the validated audits back FIRST, so the frozen artifact hash covers the exact
+        // bytes on disk (verify-evidence fills in each silence flag's computed scope/replay fields).
         store::write_json(&store::audits_path(run), &audits)?;
+        // A2: freeze the run's own decision artifacts. `persist` refuses to write if audits.json or
+        // verdicts.json changed after this point — closing the seam where a post-gate edit could
+        // slip an unverified flag or a swapped pin past the checks.
+        let mut artifacts = vec![store::file_hash(&store::audits_path(run))?];
+        let vp = store::verdicts_path(run);
+        if vp.exists() {
+            artifacts.push(store::file_hash(&vp)?);
+        }
+        m.artifacts = artifacts;
+        store::save_manifest(run, &m)?;
     }
 
     Ok(EvidenceReport { lines, failed })
