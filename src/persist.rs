@@ -62,15 +62,59 @@ fn esc(s: &str) -> String {
     s.replace('|', "\\|").replace('\n', " ")
 }
 
-/// `--page` → an absolute path. Absolute / `~`-prefixed paths are taken as-is; a bare relative
-/// path resolves under the wiki root (so `--page concepts/compiler-optimization.md` works).
-fn resolve_page(arg: &str) -> PathBuf {
-    let p = store::expand_tilde(arg);
-    if p.is_absolute() {
-        p
+/// Neutralize LLM-supplied content that could forge a falsify fence directive. Any line that, after
+/// leading whitespace, opens with `<!-- falsify:begin`/`<!-- falsify:end` is escaped (`<!--` →
+/// `&lt;!--`) so it can't desync the fence — `strip`/`find_block` match on exactly that prefix, and
+/// a quote/note/My-read line carrying one would otherwise truncate or split the block. Everything
+/// else (and the structural lines falsify emits itself) is untouched.
+fn fence_safe(s: &str) -> String {
+    s.split('\n')
+        .map(|line| {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with(fence::BEGIN) || trimmed.starts_with(fence::END) {
+                let ws = &line[..line.len() - trimmed.len()];
+                format!("{ws}&lt;!--{}", &trimmed["<!--".len()..])
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Write `content` to `path` atomically: write a sibling temp file, then rename over the target so
+/// a crash mid-write can never leave a half-written canon page (rename is atomic on the same fs).
+fn write_atomic(path: &Path, content: &str) -> Result<()> {
+    let tmp = path.with_extension("md.tmp");
+    fs::write(&tmp, content).with_context(|| format!("write {}", tmp.display()))?;
+    fs::rename(&tmp, path)
+        .with_context(|| format!("rename {} -> {}", tmp.display(), path.display()))?;
+    Ok(())
+}
+
+/// `--page` → an absolute path CONFINED to the wiki. Absolute / `~`-prefixed paths are taken as-is;
+/// a bare relative path resolves under the wiki root (so `--page concepts/foo.md` works). The
+/// resolved path may not contain a `..` component and must live under the wiki root — v1 writes
+/// only inside `~/wiki`, and `--apply` will otherwise install a block into any writable file.
+fn resolve_page(arg: &str) -> Result<PathBuf> {
+    let expanded = store::expand_tilde(arg);
+    let p = if expanded.is_absolute() {
+        expanded
     } else {
         store::wiki_root().join(arg)
+    };
+    if p.components().any(|c| c == std::path::Component::ParentDir) {
+        bail!("--page {arg} contains a `..` component — refusing to resolve outside the wiki");
     }
+    let root = store::wiki_root();
+    if !p.starts_with(&root) {
+        bail!(
+            "--page {} resolves outside the wiki root {} — v1 writes only inside the wiki",
+            p.display(),
+            root.display()
+        );
+    }
+    Ok(p)
 }
 
 /// Wiki-root-relative, forward-slashed form of an absolute path under the wiki, else `None`.
@@ -105,6 +149,10 @@ fn label_summary(verdicts: &[Verdict]) -> String {
 }
 
 pub fn persist(run: &Path, page_arg: &str, topic: &str, apply: bool) -> Result<()> {
+    // Resolve + confine the target page BEFORE any work — a `--page` that escapes the wiki should
+    // fail fast, never after the gates, and never write a block into an arbitrary file.
+    let page = resolve_page(page_arg)?;
+
     let claims = store::load_claims(run)?;
     let audits = store::load_audits(run)?;
     let verdicts = store::load_verdicts(run)?;
@@ -151,7 +199,6 @@ pub fn persist(run: &Path, page_arg: &str, topic: &str, apply: bool) -> Result<(
 
     let slug = slugify(topic);
     let key = format!("topic={slug}");
-    let page = resolve_page(page_arg);
 
     // 4. read the primary page; recover the block's created date + operator My-read; build the
     //    new block; splice it in (or scaffold a fresh page).
@@ -252,12 +299,12 @@ pub fn persist(run: &Path, page_arg: &str, topic: &str, apply: bool) -> Result<(
                 );
             }
         }
-        // Second pass: install.
+        // Second pass: install (atomic write-then-rename per file).
         for (path, content) in &edits {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::write(path, content).with_context(|| format!("write {}", path.display()))?;
+            write_atomic(path, content)?;
             let _ = fs::remove_file(proposed_path(path));
             println!("installed {}", path.display());
         }
@@ -325,6 +372,25 @@ fn artifact_recheck(manifest: &RunManifest) -> Result<()> {
 /// `verify-evidence` writes that frozen set; this refuses to write if it's missing (audit not
 /// frozen) or stale (canon drifted).
 fn input_pin_recheck(manifest: &RunManifest, audits: &[Audit], verdicts: &[Verdict]) -> Result<()> {
+    // The source document under examination is part of the pinned slice (new-run hashed its raw
+    // bytes). If it still exists and drifted since the run, the claims no longer match what was
+    // analyzed — abort. If it's gone (a transient input), there is nothing to re-check.
+    let src = store::expand_tilde(&manifest.source.path);
+    if src.is_file() {
+        let now = store::file_hash(&src)
+            .with_context(|| format!("re-hash source {}", src.display()))?
+            .sha256;
+        if now != manifest.source.sha256 {
+            bail!(
+                "input-pin: source {} changed since new-run (pinned {}…, now {}…) — the claims were \
+                 extracted from different bytes; re-run from new-run",
+                src.display(),
+                &manifest.source.sha256[..8.min(manifest.source.sha256.len())],
+                &now[..8.min(now.len())]
+            );
+        }
+    }
+
     let frozen: HashMap<&str, &str> = manifest
         .corpus_touched
         .iter()
@@ -425,13 +491,13 @@ fn render_block(
                 Some(g) => format!(
                     "- Per {person} ({}){tag}: {} \u{2014} \"{}\"\n",
                     p.source_ref,
-                    g.trim(),
-                    p.quote.trim()
+                    fence_safe(g.trim()),
+                    fence_safe(p.quote.trim())
                 ),
                 None => format!(
                     "- Per {person} ({}){tag}: \"{}\"\n",
                     p.source_ref,
-                    p.quote.trim()
+                    fence_safe(p.quote.trim())
                 ),
             };
             s.push_str(&line);
@@ -452,16 +518,17 @@ fn render_block(
                 .unwrap_or_default();
             s.push_str(&format!(
                 "- **{}** self-contradiction{mech}: {}\n",
-                a.author, c.note
+                a.author,
+                fence_safe(&c.note)
             ));
             s.push_str(&format!(
                 "  - \"{}\" ({})\n",
-                c.a.quote.trim(),
+                fence_safe(c.a.quote.trim()),
                 c.a.source_ref
             ));
             s.push_str(&format!(
                 "  - \"{}\" ({})\n",
-                c.b.quote.trim(),
+                fence_safe(c.b.quote.trim()),
                 c.b.source_ref
             ));
         }
@@ -534,7 +601,7 @@ fn render_block(
     s.push_str("### My read\n\n");
     s.push_str(fence::MY_READ_START);
     s.push('\n');
-    s.push_str(my_read);
+    s.push_str(&fence_safe(my_read));
     s.push('\n');
     s.push_str(fence::MY_READ_END);
     s.push('\n');

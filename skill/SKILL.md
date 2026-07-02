@@ -182,8 +182,9 @@ falsify persist --run-dir "$RUN" --page "<canon-page>" --topic "<Topic Label>"
 ```
 
 `--page` is the canon page that hosts the synthesis — absolute, `~/`, or **wiki-relative**
-(e.g. `concepts/<topic>.md`). Pick the claim's canonical home; it is auto-created (minimal
-`type: comparison` frontmatter) if it does not exist. persist writes the synthesis **inline** into
+(e.g. `concepts/<topic>.md`). It must resolve **inside the wiki root** — a `..` component or an
+absolute path outside the wiki is refused (v1 writes only inside `~/wiki`). Pick the claim's
+canonical home; it is auto-created (minimal `type: comparison` frontmatter) if it does not exist. persist writes the synthesis **inline** into
 that page as a topic-keyed `<!-- falsify:begin topic=<slug> … -->` block, and drops a one-line
 backlink **mark** (`<!-- falsify:begin mark=<slug> … -->`) on every OTHER audited wiki page that
 contributed a pin. **Everything outside falsify's fences is preserved** — host frontmatter, canon

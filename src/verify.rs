@@ -22,6 +22,9 @@ pub struct PinCheck {
     pub source_path: String,
     pub quote: String,
     pub ok: bool,
+    /// Empty when `ok`; else why the pin failed (source missing / unreadable / empty quote / quote
+    /// absent) — so a FAIL is diagnosable instead of one undifferentiated bare failure.
+    pub detail: String,
 }
 
 pub struct PinReport {
@@ -35,9 +38,14 @@ impl PinReport {
         for c in &self.checks {
             let mark = if c.ok { "OK  " } else { "FAIL" };
             let q: String = c.quote.chars().take(60).collect();
+            let why = if c.ok {
+                String::new()
+            } else {
+                format!("  ({})", c.detail)
+            };
             s.push_str(&format!(
-                "{mark} [{}] {} \u{2014} \"{}\"\n",
-                c.person, c.source_path, q
+                "{mark} [{}] {} \u{2014} \"{}\"{}\n",
+                c.person, c.source_path, q, why
             ));
         }
         s.push_str(&format!(
@@ -77,34 +85,57 @@ fn collect_pins(run: &Path) -> Result<Vec<Pin>> {
     ))
 }
 
-/// Does the pin's quote exist in its source? Caches normalized file contents so each
-/// source is read and normalized once per run.
-fn quote_exists(cache: &mut HashMap<String, String>, pin: &Pin) -> bool {
+/// Does the pin's quote exist in its source? Returns `(ok, detail)` — `detail` names WHY a check
+/// failed (source missing / unreadable / empty quote / quote absent) instead of collapsing all four
+/// into one bare FAIL. Caches normalized file contents so each readable source is read once per run.
+fn quote_status(cache: &mut HashMap<String, Option<String>>, pin: &Pin) -> (bool, String) {
     let path = store::expand_tilde(&pin.source_path);
     let key = path.display().to_string();
     if !cache.contains_key(&key) {
-        // Read the canon view (falsify blocks stripped): a pin must match the REAL source text,
-        // never falsify's own rendered quote on a wiki page. Books have no fences → verbatim.
-        let content = store::canon_bytes(&path).unwrap_or_default();
-        cache.insert(key.clone(), normalize_for_match(&content));
+        if !path.exists() {
+            cache.insert(key.clone(), None);
+        } else {
+            // Read the canon view (falsify blocks stripped): a pin must match the REAL source text,
+            // never falsify's own rendered quote on a wiki page. Books have no fences → verbatim.
+            // A read/parse error (non-UTF8, malformed fence) is distinct from "absent" — record it.
+            match store::canon_bytes(&path) {
+                Ok(content) => cache.insert(key.clone(), Some(normalize_for_match(&content))),
+                Err(_) => cache.insert(key.clone(), None),
+            };
+        }
     }
-    let norm = &cache[&key];
     let needle = normalize_for_match(&pin.quote);
-    // An empty quote is not a pin — and `str::contains("")` is always true, so guard it
-    // explicitly or an empty-quoted pin would silently pass the gate.
-    if norm.is_empty() || needle.is_empty() {
-        return false;
+    // An empty quote is not a pin — and `str::contains("")` is always true, so guard it explicitly
+    // or an empty-quoted pin would silently pass the gate.
+    if needle.is_empty() {
+        return (false, "empty quote (not a pin)".to_string());
     }
-    norm.contains(&needle)
+    let Some(norm) = &cache[&key] else {
+        // None means the source could not be read as canon text.
+        let why = if path.exists() {
+            "source unreadable (non-UTF8 or malformed fence)"
+        } else {
+            "source file not found"
+        };
+        return (false, why.to_string());
+    };
+    if norm.is_empty() {
+        return (false, "source has no canon text".to_string());
+    }
+    if norm.contains(&needle) {
+        (true, String::new())
+    } else {
+        (false, "quote absent from source".to_string())
+    }
 }
 
 pub fn verify_pins(run: &Path) -> Result<PinReport> {
     let pins = collect_pins(run)?;
-    let mut cache: HashMap<String, String> = HashMap::new();
+    let mut cache: HashMap<String, Option<String>> = HashMap::new();
     let mut checks = vec![];
     let mut failed = 0;
     for pin in &pins {
-        let ok = quote_exists(&mut cache, pin);
+        let (ok, detail) = quote_status(&mut cache, pin);
         if !ok {
             failed += 1;
         }
@@ -113,6 +144,7 @@ pub fn verify_pins(run: &Path) -> Result<PinReport> {
             source_path: pin.source_path.clone(),
             quote: pin.quote.clone(),
             ok,
+            detail,
         });
     }
     Ok(PinReport { checks, failed })

@@ -43,6 +43,14 @@ pub fn strip(text: &str) -> Result<String> {
         if !in_block {
             if t.starts_with(BEGIN) {
                 in_block = true;
+            } else if t.starts_with(END) {
+                // An `end` with no open `begin` is as malformed as an unclosed `begin`: keeping it
+                // would leak a fence directive (and the block tail after a desync) into the canon
+                // view. Fail closed rather than silently pass it through.
+                bail!(
+                    "unbalanced falsify fence: a `{END} ...` line has no matching `{BEGIN} ...` — \
+                     refusing to parse a malformed page"
+                );
             } else {
                 out.push_str(line);
             }
@@ -60,17 +68,24 @@ pub fn strip(text: &str) -> Result<String> {
     Ok(out)
 }
 
-/// True if a fence line carries exactly `key` (e.g. `topic=o3-speedup`), delimited so
-/// `topic=o3` does not match `topic=o3-speedup`. Keys are followed by a space (another attr or
-/// the closing ` -->`).
+/// True if a fence line carries exactly `key` (e.g. `topic=o3-speedup`), delimited on BOTH sides so
+/// neither `topic=o3` (right side — `topic=o3-speedup`) nor `subtopic=x` (left side — an attribute
+/// that merely ends in `topic=x`) matches. A key is bounded by whitespace or the end of the line.
 fn has_key(fence_line: &str, key: &str) -> bool {
-    match fence_line.find(key) {
-        Some(i) => {
-            let after = fence_line[i + key.len()..].chars().next();
-            matches!(after, Some(' ') | Some('\t') | None)
+    let mut from = 0;
+    while let Some(rel) = fence_line[from..].find(key) {
+        let i = from + rel;
+        let before_ok = i == 0 || fence_line[..i].ends_with([' ', '\t']);
+        let after_ok = matches!(
+            fence_line[i + key.len()..].chars().next(),
+            Some(' ') | Some('\t') | None
+        );
+        if before_ok && after_ok {
+            return true;
         }
-        None => false,
+        from = i + 1;
     }
+    false
 }
 
 /// Byte range `[start, end)` of the fenced block whose begin AND end lines carry `key`,
@@ -180,6 +195,27 @@ mod tests {
     fn strip_errors_on_unbalanced() {
         let bad = "intro\n<!-- falsify:begin topic=x created=d -->\nbody never closed\n";
         assert!(strip(bad).is_err());
+    }
+
+    #[test]
+    fn strip_errors_on_orphan_end() {
+        // an `end` with no matching `begin` is malformed — fail closed, don't leak it as canon
+        let bad = "intro\n<!-- falsify:end topic=x -->\ntrailing\n";
+        assert!(strip(bad).is_err());
+    }
+
+    #[test]
+    fn has_key_is_anchored_on_both_sides() {
+        // right side: topic=o3 must not match topic=o3-speedup (existing guard)
+        let line = format!("{BEGIN} topic=o3-speedup created=d -->");
+        assert!(has_key(&line, "topic=o3-speedup"));
+        assert!(!has_key(&line, "topic=o3"));
+        // left side: topic=x must not match an attribute that merely ends in it (subtopic=x)
+        let line2 = format!("{BEGIN} subtopic=x created=d -->");
+        assert!(!has_key(&line2, "topic=x"));
+        // but a genuine topic=x with a subtopic sibling still matches
+        let line3 = format!("{BEGIN} topic=x subtopic=y -->");
+        assert!(has_key(&line3, "topic=x"));
     }
 
     #[test]
