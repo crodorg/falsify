@@ -26,13 +26,15 @@ CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 SKILL_DIR="${CLAUDE_DIR}/skills/falsify"
 
 # --- build ------------------------------------------------------------------
-echo ">> building falsify (release)"
-(cd "$REPO" && cargo build --release)
+echo ">> building falsify + fetchfix (release, workspace)"
+(cd "$REPO" && cargo build --release --workspace)
 
-# --- install binary ---------------------------------------------------------
+# --- install binaries -------------------------------------------------------
 mkdir -p "$BIN_DIR"
-ln -sf "$REPO/target/release/falsify" "$BIN_DIR/falsify"
-echo ">> linked $BIN_DIR/falsify -> $REPO/target/release/falsify"
+for bin in falsify fetchfix; do
+	ln -sf "$REPO/target/release/$bin" "$BIN_DIR/$bin"
+	echo ">> linked $BIN_DIR/$bin -> $REPO/target/release/$bin"
+done
 
 # --- install skill ----------------------------------------------------------
 # SKILL.md at the skill root; subagents/ preserved so `subagents/<name>.md`
