@@ -1,3 +1,6 @@
+[workspace]
+members = ["verify-core"]
+
 [package]
 name = "falsify"
 version = "0.1.0"
@@ -9,6 +12,7 @@ name = "falsify"
 path = "src/main.rs"
 
 [dependencies]
+verify-core = { path = "verify-core" }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

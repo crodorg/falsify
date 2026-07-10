@@ -228,22 +228,10 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", h.finalize())
 }
 
-/// Replace common unicode punctuation variants with ASCII so a quote copied from a
-/// re-exported source still matches: curly quotes → straight, en/em/figure dash →
-/// hyphen, ellipsis → "...", nbsp → space.
-fn straighten(text: &str) -> String {
-    let mapped: String = text
-        .chars()
-        .map(|c| match c {
-            '\u{2018}' | '\u{2019}' | '\u{02BC}' => '\'',
-            '\u{201C}' | '\u{201D}' => '"',
-            '\u{2013}' | '\u{2014}' | '\u{2012}' => '-',
-            '\u{00A0}' => ' ',
-            other => other,
-        })
-        .collect();
-    mapped.replace('\u{2026}', "...")
-}
+// straighten + normalize_for_match live in verify-core (the kernel shared with
+// fetchfix); re-exported here so existing callers keep their import path.
+pub use verify_core::normalize_for_match;
+use verify_core::straighten;
 
 /// The determinism linchpin: canonicalize claim text so the same assertion always
 /// hashes to the same id. Lowercase, straighten punctuation, drop everything but
@@ -268,16 +256,6 @@ pub fn normalize_claim(text: &str) -> String {
 /// Content-addressed claim id: first 12 hex chars of sha256(normalize_claim(text)).
 pub fn claim_id(text: &str) -> String {
     sha256_hex(normalize_claim(text).as_bytes())[..12].to_string()
-}
-
-/// Normalize for verbatim-pin existence matching: straighten unicode punctuation and
-/// collapse all whitespace to single spaces, but PRESERVE case and words — a pin must
-/// match faithfully, tolerant only of line-wrapping and quote-char drift.
-pub fn normalize_for_match(text: &str) -> String {
-    straighten(text)
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 /// Token-set (Jaccard) similarity over normalized claim tokens, 0.0–1.0. The

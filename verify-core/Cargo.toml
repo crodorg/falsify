@@ -1,0 +1,5 @@
+[package]
+name = "verify-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared verbatim-verification kernel: cosmetic-drift normalization + quote-to-line-anchor location"
