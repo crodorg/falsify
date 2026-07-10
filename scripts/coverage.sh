@@ -18,7 +18,13 @@ fi
 # --test-threads=1: some tests mutate process-global env (std::env::set_var), which can
 # race under tarpaulin's default parallel scheduling. Serializing keeps the measurement
 # stable. (cargo test stays parallel and is stable there.)
-out=$(cargo tarpaulin --follow-exec --skip-clean --out Stdout -- --test-threads=1 2>&1) || {
+# --workspace: the repo is a cargo workspace (falsify + verify-core + fetchfix);
+# without it tarpaulin measures only the root package's tests, so member crates'
+# own test binaries never run and their lines count as dead weight.
+# --engine llvm: the default ptrace engine segfaults tracing fetchfix's spawned
+# children (falsify's spawned children trace fine — engine bug, not ours); the llvm
+# engine instruments instead of tracing, so subprocess coverage works for both.
+out=$(cargo tarpaulin --workspace --engine llvm --follow-exec --skip-clean --out Stdout -- --test-threads=1 2>&1) || {
   echo "coverage: tarpaulin failed:" >&2
   printf '%s\n' "$out" | tail -15 >&2
   exit 1

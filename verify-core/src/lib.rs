@@ -113,8 +113,8 @@ mod tests {
 
     #[test]
     fn find_survives_reflow_across_lines() {
-        let t = NormText::new("the hot loop\nis vectorized by -O3\ntail");
-        // quote as one line, source wrapped across two
+        let t = NormText::new("the hot loop\nis \"vectorized\" by -O3\ntail");
+        // quote as one line (with curly-quote/dash drift), source wrapped across two
         assert_eq!(
             t.find("hot loop is \u{201C}vectorized\u{201D} by \u{2013}O3"),
             vec![(1, 2)]

@@ -1,0 +1,11 @@
+%%% FILE: @FIX@/src/sample.md LINES: 4-4 %%%
+- bullet beta: pack my box with five dozen liquor jugs
+%%% END %%%
+
+%%% FILE: @FIX@/src/sample.md LINES: 3-3 %%%
+- bullet alpha: the quick brown fox jumps over the lazy dog
+%%% END %%%
+
+%%% FILE: @FIX@/src/sample.md LINES: 7-7 %%%
+another line for corrected anchors sitting at line seven
+%%% END %%%

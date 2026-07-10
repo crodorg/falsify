@@ -1,0 +1,12 @@
+[package]
+name = "fetchfix"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic re-anchorer for LLM-quoted file spans: corrects drifted line anchors, re-emits source bytes, flags fabrication"
+
+[[bin]]
+name = "fetchfix"
+path = "src/main.rs"
+
+[dependencies]
+verify-core = { path = "../verify-core" }

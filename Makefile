@@ -19,10 +19,10 @@ fmt:
 	cargo fmt --check
 
 clippy:
-	cargo clippy --all-targets -- -D warnings
+	cargo clippy --workspace --all-targets -- -D warnings
 
 test:
-	cargo test --quiet
+	cargo test --workspace --quiet
 
 sizes:
 	sh scripts/check_file_sizes.sh $(RS_CAP) $(GLOBS)

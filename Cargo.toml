@@ -1,5 +1,5 @@
 [workspace]
-members = ["verify-core"]
+members = ["verify-core", "fetchfix"]
 
 [package]
 name = "falsify"

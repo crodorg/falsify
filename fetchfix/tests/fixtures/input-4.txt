@@ -1,0 +1,12 @@
+%%% FILE: @FIX@/src/sample.md LINES: 9-9 %%%
+- bullet delta [sic]: *"pack my box with five dozen liquor jugs"* trailing slip
+%%% END %%%
+
+%%% FILE: @FIX@/src/sample.md LINES: 1-1 %%%
+quick brown fox jumps over the lazy
+%%% END %%%
+
+%%% FILE: @FIX@/src/sample.md LINES: 7-7 %%%
+another line for corrected anchors sitting at line seven
+# bullet alpha: the quick brown fox jumps over the lazy dog
+%%% END %%%

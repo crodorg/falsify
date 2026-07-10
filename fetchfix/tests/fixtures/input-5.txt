@@ -1,0 +1,6 @@
+%%% FILE: @FIX@/src/dup.md LINES: 2-2 %%%
+- repeated: the same long duplicated sentence appears twice [truncated]
+%%% END %%%
+
+%%% FILE: @FIX@/src/sample.md LINES: 1-1 %%%
+%%% END %%%

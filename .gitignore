@@ -1,3 +1,5 @@
 /target
 verify-core/target/
 verify-core/Cargo.lock
+fetchfix/target/
+fetchfix/Cargo.lock
