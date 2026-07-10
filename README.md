@@ -17,10 +17,11 @@ It is two pieces:
    pages (a snapshot per topic — latest run wins, guarded so it can't silently drop a recorded
    claim — near-dup detection, propose-diff, idempotent splice). It is golden-tested:
    same inputs → same outputs.
-2. **A Claude Code skill (`/falsify`)** — the reasoning layer. It extracts the claims, spawns a
+2. **An agent skill (`/falsify`)** — the reasoning layer. It extracts the claims, spawns a
    subagent to drill the wiki canon for self-contradictions and silences, runs an adversarial pass
    on pin-vs-label fit, renders per-claim verdicts under a fixed rubric, and drives the binary to
-   persist. The judgment and synthesis run on **your** Claude Code subscription.
+   persist. The judgment and synthesis run on whatever coding agent you already use — falsify
+   brings no API keys or model costs of its own.
 
 Two design principles hold the whole thing together:
 
@@ -35,14 +36,15 @@ Two design principles hold the whole thing together:
 ## ⚠️ Read this first — what this actually is
 
 **This is a highly personalized tool I built for my own daily workflow. It is not a polished
-product.** It assumes you work the way I do: inside Claude Code, from a terminal, with a markdown +
+product.** It assumes you work the way I do: inside a terminal coding agent, with a markdown +
 git knowledge wiki you curate by hand. It makes opinionated choices and expects you to read the
 code and bend it to your setup rather than configure it through a UI.
 
-Concretely, it **requires [Claude Code](https://claude.com/claude-code)** — the entire reasoning
-layer (claim extraction, the canon audit, the adversarial pass, the verdict) *is* a Claude Code
-skill. Without Claude Code you have a deterministic validation/persistence binary and nothing to
-drive it. It also assumes a **plainbrain-style `~/wiki`**: a corpus of trust-tiered canon to audit
+Concretely, it **requires a tool-using coding agent** — the entire reasoning layer (claim
+extraction, the canon audit, the adversarial pass, the verdict) *is* an agent skill: markdown
+instructions plus two subagent prompts. Any agent that can follow a skill file, run shell
+commands, and spawn subagents will drive it. Without one you have a deterministic
+validation/persistence binary and nothing to drive it. It also assumes a **plainbrain-style `~/wiki`**: a corpus of trust-tiered canon to audit
 against and compound into. Point it at an empty directory and there is nothing to falsify.
 
 ---
@@ -93,7 +95,8 @@ If you don't run a retrieval agent that emits this format, fetchfix is harmless 
 
 ## Requirements
 
-- **Claude Code** (required — the `/falsify` skill is the reasoning layer).
+- **A tool-using coding agent** (required — the `/falsify` skill is the reasoning layer; anything
+  that can follow a markdown skill, shell out, and spawn subagents).
 - **Rust toolchain** (`cargo`) to build the binary.
 - **A markdown wiki** at `~/wiki` — the canon corpus. Override with `FALSIFY_WIKI_ROOT`, or set
   `$PLAINBRAIN_WIKI` if you use [plainbrain](https://github.com/crodorg/plainbrain). The skill
@@ -111,8 +114,9 @@ git clone https://github.com/crodorg/falsify && cd falsify
 
 `install.sh` builds the release binaries (`falsify`, `fetchfix`), symlinks them into
 `~/.local/bin/`, and installs the
-skill into `~/.claude/skills/falsify/` (honoring `CLAUDE_CONFIG_DIR`). Make sure `~/.local/bin` is
-on your `PATH`. Then, in Claude Code:
+skill into your agent's skills directory (default `~/.claude/skills/falsify/`, honoring
+`CLAUDE_CONFIG_DIR`). Make sure `~/.local/bin` is
+on your `PATH`. Then, in your agent:
 
 ```
 /falsify <source-path> [--as-of YYYY-MM-DD]
@@ -120,7 +124,7 @@ on your `PATH`. Then, in Claude Code:
 
 ## How it works
 
-A source document moves through five stages. The LLM stages run in your Claude Code session; the
+A source document moves through five stages. The LLM stages run in your agent session; the
 deterministic stages run in the binary.
 
 1. **Claim extraction.** The source is decomposed into falsifiable claims under a strict JSON
@@ -176,7 +180,7 @@ otherwise.
 
 ## Limitations (honest list)
 
-- Requires Claude Code; there is no standalone CLI that produces verdicts.
+- Requires a tool-using coding agent; there is no standalone CLI that produces verdicts.
 - Requires a curated markdown wiki — it audits what you already trust; it does not build the corpus.
 - v1 runs the local-canon and adversarial passes on a single source into one topic, and each topic
   block is a per-run **snapshot** (re-persisting replaces it — guarded against silent claim loss).

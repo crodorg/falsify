@@ -1,5 +1,5 @@
 #!/bin/sh
-# install.sh — build the `falsify` binary and install the /falsify Claude Code skill.
+# install.sh — build the falsify + fetchfix binaries and install the /falsify agent skill.
 #
 # Usage:
 #   ./install.sh
@@ -51,7 +51,7 @@ Done. Next steps:
   * Ensure $BIN_DIR is on your PATH.
   * falsify audits against a plainbrain-style wiki at ~/wiki (override: FALSIFY_WIKI_ROOT,
     or \$PLAINBRAIN_WIKI). Without a canon corpus there, there is nothing to audit against.
-  * In Claude Code, run:  /falsify <source-path> [--as-of YYYY-MM-DD]
+  * In your agent, run:  /falsify <source-path> [--as-of YYYY-MM-DD]
 
 See README.md for what this is and how it complements recon and plainbrain.
 EOF
