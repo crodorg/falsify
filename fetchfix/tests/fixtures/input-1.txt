@@ -1,0 +1,30 @@
+Retrieved spans follow.
+
+%%% FILE: @FIX@/src/sample.md LINES: 3-3 %%%
+- bullet alpha: the quick brown fox jumps over the lazy dog
+%%% END %%%
+
+%%% FILE: @FIX@/src/sample.md LINES: 10-10 %%%
+another line for corrected anchors sitting at line seven
+%%% END %%%
+
+%%% FILE: @FIX@/src/sample.md LINES: 6-6 %%%
+a long unique prose line with a straight ’apostrophe’ inside it
+%%% END %%%
+
+%%% FILE: @FIX@/src/sample.md LINES: 3-5 %%%
+- bullet alpha: the quick brown fox jumps over the lazy dog
+- bullet beta: pack my box with five dozen liquor jugs
+- bullet gamma: how vexingly quick daft zebras jump
+%%% END %%%
+
+%%% FILE: @FIX@/src/sample.md LINES: 4-4 %%%
+- bullet beta: pack my box with five dozen [truncated]
+%%% END %%%
+
+%%% FILE: @FIX@/src/sample.md LINES: 6-7 %%%
+a long unique prose line with a straight 'apostrophe' inside it
+another line for corrected anchors sitting at line seven
+%%% END %%%
+
+Done.

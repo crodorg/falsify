@@ -1,0 +1,6 @@
+CORRECTED @FIX@/src/sample.md 10-10 -> 7-7
+SPLIT @FIX@/src/sample.md 3-5 -> 3-3
+SPLIT @FIX@/src/sample.md 3-5 -> 4-4
+SPLIT @FIX@/src/sample.md 3-5 -> 5-5
+REPAIRED @FIX@/src/sample.md 4-4 -> 4-4 (completed truncated quote)
+fetchfix: 8 blocks | 3 ok | 4 corrected | 1 repaired | 0 unlocatable

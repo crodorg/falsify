@@ -1,0 +1,7 @@
+%%% FILE: @FIX@/src/sample.md LINES: 2-2 %%%
+this sentence was never in the file at all, invented wholesale
+%%% END %%%
+
+%%% FILE: @FIX@/missing.md LINES: 1-1 %%%
+some quoted text from a file that does not exist
+%%% END %%%
