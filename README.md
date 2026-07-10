@@ -70,6 +70,27 @@ The loop: **recon** gathers evidence → **plainbrain** holds what you trust →
 claims against it and writes the verdict back. Retrieval, memory, and falsification — three small
 terminal tools, one wiki. All three are personal tools, shared as-is.
 
+## Also in this repo: `verify-core` and `fetchfix`
+
+The repo is a small cargo workspace. The pin-gate's kernel — *is this quoted text verbatim in
+that source, and where* — turned out to be exactly what a second tool needed, so it lives in a
+shared lib crate and both binaries stay thin:
+
+- **`verify-core`** — the shared kernel: cosmetic-drift normalization (curly↔straight quotes,
+  unicode dashes/ellipsis, collapsed whitespace — tolerated; wording changes — never) and a
+  whole-file locator that maps a normalized quote back to its 1-based source line span, robust
+  to line-wrap reflow.
+- **`fetchfix`** — a deterministic post-processor for LLM retrieval output. A retrieval agent
+  that returns `%%% FILE: <path> LINES: a-b %%%` blocks copies text reliably but drifts its
+  line anchors; fetchfix relocates every block's text in the named source, rewrites the anchors
+  to the truth, re-emits the **source file's own bytes** for the span (output is byte-verbatim,
+  never the model's copy), and flags any block whose quote is not in the file (exit 2 —
+  fabrication). `fetchfix [file]` reads a file or stdin; corrected stream on stdout, per-block
+  report on stderr. Golden-tested like the rest of the substrate.
+
+If you don't run a retrieval agent that emits this format, fetchfix is harmless to ignore —
+`install.sh` links it next to `falsify`, and nothing in the falsify pipeline depends on it.
+
 ## Requirements
 
 - **Claude Code** (required — the `/falsify` skill is the reasoning layer).
@@ -88,7 +109,8 @@ git clone https://github.com/crodorg/falsify && cd falsify
 ./install.sh
 ```
 
-`install.sh` builds the release binary, symlinks it to `~/.local/bin/falsify`, and installs the
+`install.sh` builds the release binaries (`falsify`, `fetchfix`), symlinks them into
+`~/.local/bin/`, and installs the
 skill into `~/.claude/skills/falsify/` (honoring `CLAUDE_CONFIG_DIR`). Make sure `~/.local/bin` is
 on your `PATH`. Then, in Claude Code:
 
